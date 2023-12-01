@@ -43,3 +43,17 @@ In the created file you must define a type named `Neighborhood` and two function
 
 Take `./src/iterbest/neighborhood/n8.cu` as an example.
 The code defined here runs on the GPU so take this in mind for performance reasons.
+
+## Running on HP-Clusters using slurm
+
+1. SSH into the login node of the HP cluster (Currently this works only if CUDA 12.3 is installed on the cluster nodes and nvcc is located at `/usr/local/cuda-12.3/bin/nvcc`).
+
+2. `git clone` this repo somewhere. Stay where you are, do not cd into the cloned repo.
+
+3. Copy the barcode set somewhere onto the login node (eg next to the cloned repo).
+
+4. Configure iterbest using `barcode-layout/scripts/configure_iterbest.sh <NUMBER_OF_BARCODES> <BARCODE_LENGTH> <DIM_X> <DIM_Y> [ <NEIGHBORHOOD_NAME> ]`.
+
+5. Queue the job using `sbatch barcode-layout/scripts/batch.sh <KUERZEL> <PATH_TO_BARCODE_SET>`.
+
+6. Follow the progress using `tail -f slurm-<JOB_ID>.err`. Once finished, the generated layout will be in `iterbest-layout-<JOB_ID>.json`.
