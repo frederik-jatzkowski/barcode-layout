@@ -10,6 +10,9 @@
 
 #include <iostream>
 
+#define THREAD_BLOCKS 1024
+#define THREADS_PER_THREAD_BLOCK 256
+
 namespace index_pool {
     struct Pool {
         uint32_t size;
@@ -63,7 +66,7 @@ namespace algorithm {
         uint32_t indexPoolHandle;
     };
 
-    using ResultBlock = struct BarcodeQuality[1024];
+    using ResultBlock = struct BarcodeQuality[THREADS_PER_THREAD_BLOCK];
 
     __global__ void grid_reduction(
         uint32_t x,
@@ -73,7 +76,7 @@ namespace algorithm {
         index_pool::Pool *pool,
         ResultBlock *result_block
     ) {
-        uint32_t blockOffset = 1024 * blockIdx.x;
+        uint32_t blockOffset = THREADS_PER_THREAD_BLOCK * blockIdx.x;
         uint32_t threadId = threadIdx.x;
 
         if (blockOffset >= pool->size) {
@@ -84,7 +87,7 @@ namespace algorithm {
         }
 
         __shared__ neighborhood::Neighborhood neighbors;
-        __shared__ struct BarcodeQuality qualities[1024];
+        __shared__ struct BarcodeQuality qualities[THREADS_PER_THREAD_BLOCK];
 
         qualities[threadId].indexPoolHandle = blockOffset + threadId;
         qualities[threadId].quality = UCHAR_MAX;
@@ -98,16 +101,23 @@ namespace algorithm {
         __syncthreads();
 
         // calculate quality of each barcode
-        if (blockOffset + threadId < pool->size) {
+        while (blockOffset + threadId < pool->size) {
             barcodes::SynthSchedule candidate = (*schedules)[pool->indices[blockOffset + threadId]];
             
-            qualities[threadId].quality = neighborhood::nquality(x, y, &candidate, schedules, &neighbors);
+            uint16_t quality = neighborhood::nquality(x, y, &candidate, schedules, &neighbors);
+
+            if (quality < qualities[threadId].quality) {
+                qualities[threadId].quality = quality;
+                qualities[threadId].indexPoolHandle = blockOffset + threadId;
+            }
+
+            blockOffset += THREAD_BLOCKS*THREADS_PER_THREAD_BLOCK;
         }
 
         __syncthreads();
 
         // run parallel reduction to find best for this block
-        for (uint16_t s = 512; s > 0; s >>= 1) {
+        for (uint16_t s = THREADS_PER_THREAD_BLOCK / 2; s > 0; s >>= 1) {
             if (threadId < s && qualities[threadId + s].quality < qualities[threadId].quality)
                 qualities[threadId] = qualities[threadId + s];
 
@@ -129,7 +139,7 @@ namespace algorithm {
     ) {
         uint32_t threadId = threadIdx.x;
 
-        __shared__ struct BarcodeQuality qualities[1024];
+        __shared__ struct BarcodeQuality qualities[THREAD_BLOCKS];
 
         // load block results into shared memory
         qualities[threadId] = (*result_block)[threadId];
@@ -137,7 +147,7 @@ namespace algorithm {
         __syncthreads();
 
         // run parallel reduction to find best for this block
-        for (uint16_t s = 512; s > 0; s >>= 1) {
+        for (uint16_t s = THREAD_BLOCKS / 2; s > 0; s >>= 1) {
             if (threadId < s && qualities[threadId + s].quality < qualities[threadId].quality)
                 qualities[threadId] = qualities[threadId + s];
 
@@ -169,11 +179,11 @@ namespace algorithm {
         int percent = -1;
         for (size_t x = 0; x < DIM_X; x++) {
             for (size_t y = 0; y < DIM_Y; y++) {
-                grid_reduction<<<1024, 1024>>>(x, y, device_layout, device_schedules, device_index_pool, device_result_block);
+                grid_reduction<<<THREAD_BLOCKS, THREADS_PER_THREAD_BLOCK>>>(x, y, device_layout, device_schedules, device_index_pool, device_result_block);
 
                 checkForError(__func__, __LINE__);
 
-                block_reduction<<<1, 1024>>>(x, y, device_layout, device_schedules, device_index_pool, device_result_block);
+                block_reduction<<<1, THREAD_BLOCKS>>>(x, y, device_layout, device_schedules, device_index_pool, device_result_block);
 
                 checkForError(__func__, __LINE__);
                 
