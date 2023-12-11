@@ -48,13 +48,14 @@ void checkForError(const char *function, int line)
     {
         cudaDeviceReset();
 
-        printf(
+        fprintf(
+            stderr,
             "cuda error (%s) caught in %s on line %d",
             cudaGetErrorString(err),
             function,
             line
         );
-        std::cout << std::flush;
+        std::cerr << std::flush;
 
         exit(-1);
     }
@@ -66,7 +67,7 @@ namespace algorithm {
         uint32_t indexPoolHandle;
     };
 
-    using ResultBlock = struct BarcodeQuality[THREADS_PER_THREAD_BLOCK];
+    using ResultBlock = struct BarcodeQuality[THREAD_BLOCKS];
 
     __global__ void grid_reduction(
         uint32_t x,
@@ -81,7 +82,7 @@ namespace algorithm {
 
         if (blockOffset >= pool->size) {
             if (threadId == 0)
-                (*result_block)[blockIdx.x].quality = UCHAR_MAX;
+                (*result_block)[blockIdx.x].quality = USHRT_MAX;
 
             return;
         }
@@ -90,7 +91,7 @@ namespace algorithm {
         __shared__ struct BarcodeQuality qualities[THREADS_PER_THREAD_BLOCK];
 
         qualities[threadId].indexPoolHandle = blockOffset + threadId;
-        qualities[threadId].quality = UCHAR_MAX;
+        qualities[threadId].quality = USHRT_MAX;
 
         #define MASK_OFFSET_X MASK_X / 2;
         #define MASK_OFFSET_Y MASK_Y / 2;
