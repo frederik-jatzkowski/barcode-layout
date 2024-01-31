@@ -222,7 +222,7 @@ namespace algorithm {
             }
         }
 
-        fprintf(stderr, "\nfinished optimization in %lf nanoseconds\n", now() - algorithmStart);
+        fprintf(stderr, "\nfinished optimization in %lf seconds\n", now() - algorithmStart);
 
         cudaMemcpy(result, device_layout, sizeof(layout::Layout), cudaMemcpyDeviceToHost);
 
@@ -231,8 +231,6 @@ namespace algorithm {
         cudaFree(device_result_block);
         cudaFree(device_index_pool);
     }
-
-    
 }
 
 #endif
