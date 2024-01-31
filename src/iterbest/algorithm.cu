@@ -8,10 +8,20 @@
 #include "barcodes.cu"
 #include "layout.cu"
 
+#include <stdio.h>
+#include <time.h>
 #include <iostream>
 
 #define THREAD_BLOCKS 1024
 #define THREADS_PER_THREAD_BLOCK 256
+
+double now()
+{
+    struct timespec tv;
+    clock_gettime(CLOCK_REALTIME, &tv);
+
+    return (double)tv.tv_sec + tv.tv_nsec / 1e9;
+}
 
 namespace index_pool {
     struct Pool {
@@ -162,6 +172,8 @@ namespace algorithm {
     }
 
     void optimize(const barcodes::ScheduleSet *schedules, layout::Layout *result) {
+        double algorithmStart = now();
+
         barcodes::ScheduleSet *device_schedules;
         cudaMalloc((void **)&device_schedules, sizeof(barcodes::ScheduleSet));
         cudaMemcpy((void *)device_schedules, (void *)schedules, sizeof(barcodes::ScheduleSet), cudaMemcpyHostToDevice);
@@ -210,7 +222,7 @@ namespace algorithm {
             }
         }
 
-        fprintf(stderr, "\nfinished\n");
+        fprintf(stderr, "\nfinished optimization in %lf nanoseconds\n", now() - algorithmStart);
 
         cudaMemcpy(result, device_layout, sizeof(layout::Layout), cudaMemcpyDeviceToHost);
 
